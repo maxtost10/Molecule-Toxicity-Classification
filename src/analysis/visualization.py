@@ -34,10 +34,11 @@ def analyze_lgbm_interpretability(lgbm_results, lgbm_data, top_n=None):
     try:
         # TreeExplainer for LightGBM
         explainer = shap.TreeExplainer(model)
-        shap_values = explainer.shap_values(X_shap)
+        explanation = explainer(X_shap)
+        shap_values = explanation.values
         
-        if isinstance(shap_values, list):
-            shap_values = shap_values[1]
+        if len(shap_values.shape) == 3:
+            shap_values = shap_values[:, :, 1]
             
         mean_shap_importance = np.mean(np.abs(shap_values), axis=0)
         
@@ -86,7 +87,12 @@ def visualize_attention_weights(model, sample_molecules, device, num_examples=3)
     
     for row, (mol_idx, label) in enumerate(examples):
         mol = sample_molecules[mol_idx]
-        batch_data = Data(x=mol.x, edge_index=mol.edge_index, batch=torch.zeros(mol.x.shape[0], dtype=torch.long)).to(device)
+        
+        batch_data = Data(
+            x=mol.x.float(), 
+            edge_index=mol.edge_index, 
+            batch=torch.zeros(mol.x.shape[0], dtype=torch.long)
+        ).to(device)
         
         with torch.no_grad():
             out, attention_weights = model(batch_data.x, batch_data.edge_index, batch_data.batch, return_attention_weights=True)

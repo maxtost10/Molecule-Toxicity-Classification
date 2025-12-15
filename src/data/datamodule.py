@@ -25,10 +25,10 @@ class LiverDataModule(pl.LightningDataModule):
     def setup(self, stage=None):
         print("⚡ [DataModule] Setting up datasets...")
         
-        # 1. Load raw data (using your existing loader)
+        # 1. Load raw data
         self.molecules, self.targets, _ = load_and_prepare_liver_data()
         
-        # 2. Split data (using your existing splitter)
+        # 2. Split data
         self.splits = stratified_split_data(self.molecules, self.targets)
         
         # 3. Convert to PyG Data objects and assign to datasets
@@ -58,10 +58,10 @@ class LiverDataModule(pl.LightningDataModule):
         return processed_data
 
     def train_dataloader(self):
-        return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=0)
+        return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=7)
 
     def val_dataloader(self):
-        return DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=0)
+        return DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=7)
 
     def test_dataloader(self):
-        return DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=False, num_workers=0)
+        return DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=False, num_workers=7)

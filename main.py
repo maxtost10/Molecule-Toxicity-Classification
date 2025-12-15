@@ -1,110 +1,130 @@
+import pytorch_lightning as pl
+from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 import torch
 import numpy as np
-import matplotlib.pyplot as plt
-from src.config import Config
+from torch_geometric.data import Data
 
-# Import modules from our new package structure
-from src.data import load_and_prepare_liver_data, stratified_split_data
-from src.features import prepare_lgbm_data, prepare_gnn_data
-from src.training import train_lgbm_with_class_weights, train_gat_model
+from src.config import Config
+from src.data import LiverDataModule
+from src.features import prepare_lgbm_data
+from src.models import HepatotoxicityGAT
+from src.training import train_lgbm_with_class_weights
 from src.analysis import (
-    evaluate_on_test_set, 
+    evaluate_on_test_set,
     statistical_significance_testing,
-    analyze_lgbm_interpretability, 
-    visualize_attention_weights, 
+    analyze_lgbm_interpretability,
+    visualize_attention_weights,
     create_comprehensive_comparison_plots,
     generate_final_insights,
     create_project_summary_report
 )
 
 def main():
-    # Set random seeds for reproducibility
-    torch.manual_seed(42)
-    np.random.seed(42)
-
-    print("🚀 Starting Liver Toxicity Prediction Project - MODULARIZED VERSION")
-    print("📊 Target: NR-AhR hepatotoxicity (GAT vs LGBM comparison)")
-    print(f"⚡ Mode: {'QUICK TEST' if Config.QUICK_TEST else 'FULL TRAINING'}")
-    print("="*80)
-
-    # ---------------------------------------------------------
-    # PHASE 1: DATA PREPARATION
-    # ---------------------------------------------------------
-    molecules, targets, valid_indices = load_and_prepare_liver_data()
-    data_splits = stratified_split_data(molecules, targets)
-
-    # ---------------------------------------------------------
-    # PHASE 2: LGBM BASELINE
-    # ---------------------------------------------------------
-    # Prepare features
-    lgbm_data, feature_names = prepare_lgbm_data(data_splits)
+    # 1. Setup
+    pl.seed_everything(42)
+    print("🚀 Starting Liver Toxicity Prediction Project")
     
-    if lgbm_data is None:
-        print("❌ LGBM data preparation failed. Exiting.")
-        return
+    # Init DataModule
+    dm = LiverDataModule()
+    dm.prepare_data()
+    dm.setup()
 
-    # Train model
+    # ---------------------------------------------------------
+    # PHASE 1: LGBM BASELINE (Classic ML)
+    # ---------------------------------------------------------
+    print("\n🏗️ PHASE 1: LGBM BASELINE")
+    # We access the raw splits inside the DM for the feature extractor
+    lgbm_data, feature_names = prepare_lgbm_data(dm.splits)
     lgbm_results = train_lgbm_with_class_weights(lgbm_data, feature_names)
-
-    # Analyze interpretability (SHAP)
+    
     if lgbm_results:
         analyze_lgbm_interpretability(lgbm_results, lgbm_data)
-        print(f"✅ LGBM BASELINE COMPLETE!")
-        print(f"📊 Best validation F1-score: {lgbm_results['val_f1']:.4f}")
 
     # ---------------------------------------------------------
-    # PHASE 3: GAT MODEL
+    # PHASE 2: GAT MODEL (PyTorch Lightning)
     # ---------------------------------------------------------
-    # Prepare graph data
-    gnn_loaders = prepare_gnn_data(data_splits, batch_size=Config.BATCH_SIZE)
+    print("\n🏗️ PHASE 2: GAT MODEL")
+
+    # Calculate class weights dynamically
+    train_targets = dm.splits['train']['targets']
+    neg, pos = np.bincount(train_targets)
+    pos_weight = float(neg) / pos
+    print(f"   • Class imbalance weight: {pos_weight:.2f}")
+
+    # Init Model
+    model = HepatotoxicityGAT(
+        node_features=dm.node_features_dim,
+        pos_weight=pos_weight,
+        hidden_dim=Config.GAT_HIDDEN,
+        num_heads=Config.GAT_HEADS,
+        num_layers=Config.GAT_LAYERS,
+        dropout=0.3
+    )
+
+    # Init Trainer
+    checkpoint_callback = ModelCheckpoint(monitor='val_f1', mode='max', save_top_k=1, verbose=True)
+    early_stop_callback = EarlyStopping(monitor='val_f1', mode='max', patience=Config.GAT_PATIENCE)
+
+    trainer = pl.Trainer(
+        max_epochs=Config.GAT_EPOCHS,
+        callbacks=[checkpoint_callback, early_stop_callback],
+        accelerator='auto',  # Automatically detects GPU/CPU
+        devices='auto',
+        enable_progress_bar=True,
+        log_every_n_steps=10
+    )
+
+    # Train
+    trainer.fit(model, dm)
+
+    # Load best model for analysis
+    if checkpoint_callback.best_model_path:
+        print(f"   • Loading best model from: {checkpoint_callback.best_model_path}")
+        model = HepatotoxicityGAT.load_from_checkpoint(
+            checkpoint_callback.best_model_path, 
+            weights_only=False
+        )
     
-    # Get node feature dimension from a sample
-    sample_mol = data_splits['train']['molecules'][0]
-    node_features_dim = sample_mol.x.shape[1]
-    
-    # Train model
-    gat_results = train_gat_model(gnn_loaders, data_splits, node_features_dim)
-    
-    # Visualize attention on validation set samples
-    if gat_results:
-        # Prepare a small subset of molecules for visualization
-        val_molecules = data_splits['val']['molecules']
-        # We need to wrap them in Data objects if they aren't already fully compatible for the visualizer
-        # (The visualizer expects a list of PyG Data objects with .y attributes)
-        from torch_geometric.data import Data
-        sample_molecules = []
-        for i, mol in enumerate(val_molecules[:20]):
-            mol_with_target = Data(
-                x=mol.x.to(torch.float),
-                edge_index=mol.edge_index,
-                edge_attr=mol.edge_attr,
-                y=torch.tensor([data_splits['val']['targets'][i]], dtype=torch.float),
-                smiles=mol.smiles if hasattr(mol, 'smiles') else None
-            )
-            sample_molecules.append(mol_with_target)
-
-        visualize_attention_weights(gat_results['model'], sample_molecules, gat_results['device'])
-        
-        print(f"\n✅ GAT MODEL COMPLETE!")
-        print(f"📊 Best validation F1-score: {gat_results['val_f1']:.4f}")
-
     # ---------------------------------------------------------
-    # PHASE 4: COMPARISON & ANALYSIS
+    # PHASE 3: ANALYSIS & COMPARISON
     # ---------------------------------------------------------
-    if lgbm_results and gat_results:
-        # Evaluate on held-out test set
-        test_results = evaluate_on_test_set(lgbm_results, gat_results, lgbm_data, gnn_loaders)
-        
-        # Create comparison plots
-        create_comprehensive_comparison_plots(test_results, lgbm_results, gat_results, node_features_dim)
-        
-        # Statistical testing
-        statistical_significance_testing(test_results)
-        
-        # Final reports
-        generate_final_insights(test_results, lgbm_results, gat_results)
-        create_project_summary_report(test_results)
+    print("\n📊 PHASE 3: FINAL ANALYSIS")
+    
+    # Construct results dictionary to bridge PL with your analysis module
+    gat_results = {
+        'model': model,
+        'device': model.device, 
+        'training_time': 0, # PL doesn't track this by default, but minor detail
+        'val_f1': trainer.callback_metrics.get('val_f1', 0).item()
+    }
+    
+    # Create loader dictionary for the analysis tools
+    gnn_loaders = {'test': dm.test_dataloader(), 'val': dm.val_dataloader()}
 
+    # Run evaluation pipeline
+    test_results = evaluate_on_test_set(lgbm_results, gat_results, lgbm_data, gnn_loaders)
+    create_comprehensive_comparison_plots(test_results, lgbm_results, gat_results, dm.node_features_dim)
+    statistical_significance_testing(test_results)
+    generate_final_insights(test_results, lgbm_results, gat_results)
+    create_project_summary_report(test_results)
+
+    # Optional: GAT Attention Visualization
+    # We grab a few samples from the validation split manually
+    print("\n🔍 Generating Attention Visualization...")
+    val_molecules = dm.splits['val']['molecules'][:20]
+    # Small helper to wrap raw objects into Data objects with labels for the vis function
+    sample_molecules = []
+    for i, mol in enumerate(val_molecules):
+        mol_copy = Data(
+            x=mol.x.clone().to(torch.float), edge_index=mol.edge_index.clone(),
+            edge_attr=mol.edge_attr.clone() if mol.edge_attr is not None else None,
+            y=torch.tensor([dm.splits['val']['targets'][i]]),
+            smiles=mol.smiles if hasattr(mol, 'smiles') else None
+        )
+        sample_molecules.append(mol_copy)
+    
+    visualize_attention_weights(model, sample_molecules, model.device)
+    
     print("\n✅ Project execution finished.")
 
 if __name__ == "__main__":
