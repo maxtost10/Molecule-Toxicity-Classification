@@ -71,7 +71,12 @@ def visualize_attention_weights(model, sample_molecules, device):
             for idx, w in enumerate(weights.cpu()):
                 src = edge_index[0, idx]
                 importance[src] += w.mean().item()
-            node_colors = plt.cm.Reds(importance.numpy() / importance.max().item())
+            
+            if importance.max() > 0:
+                normalized_importance = importance.numpy() / importance.max().item()
+                node_colors = plt.cm.Reds(normalized_importance)
+            else:
+                 node_colors = plt.cm.Reds(importance.numpy())
 
         nx.draw(G, pos, ax=axes[i], node_color=node_colors, with_labels=True, node_size=300)
         axes[i].set_title(f"Label: {int(mol.y.item())} | Pred: {prob:.2f}")
