@@ -15,7 +15,7 @@ class Config:
     LGBM_LEAVES = 15 if QUICK_TEST else 31
     
     # GAT settings  
-    GAT_EPOCHS = 2 if QUICK_TEST else 100
+    GAT_EPOCHS = 5 if QUICK_TEST else 100
     GAT_PATIENCE = 5 if QUICK_TEST else 20
     GAT_HIDDEN = 2 if QUICK_TEST else 64
     GAT_HEADS = 1 if QUICK_TEST else 4
@@ -23,7 +23,7 @@ class Config:
     
     # Feature settings
     MORGAN_BITS = 512 if QUICK_TEST else 2048
-    BATCH_SIZE = 32
+    BATCH_SIZE = 2 if QUICK_TEST else 64
     
     # Analysis settings
     SHAP_SAMPLES = 50 if QUICK_TEST else 100
