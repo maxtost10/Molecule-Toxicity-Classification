@@ -1,35 +1,36 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.optim as optim
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch_geometric.nn import GATConv, global_mean_pool
+import pytorch_lightning as pl
+from sklearn.metrics import f1_score, roc_auc_score
 
-class HepatotoxicityGAT(nn.Module):
-    """Graph Attention Network for hepatotoxicity prediction"""
+class HepatotoxicityGAT(pl.LightningModule):
+    """
+    Graph Attention Network for hepatotoxicity prediction.
+    Implemented as a PyTorch Lightning Module for streamlined training.
+    """
     
-    def __init__(self, node_features, hidden_dim=64, num_heads=4, num_layers=3, dropout=0.2):
+    def __init__(self, node_features, pos_weight=None, hidden_dim=64, num_heads=4, num_layers=3, dropout=0.2, lr=0.001):
         super(HepatotoxicityGAT, self).__init__()
         
-        self.num_layers = num_layers
+        # Save hyperparameters to self.hparams (auto-logging)
+        self.save_hyperparameters()
+        
         self.dropout = dropout
+        self.lr = lr
         
-        # GAT layers
+        # --- Architecture Definition ---
         self.gat_layers = nn.ModuleList()
-        
         # First layer
-        self.gat_layers.append(
-            GATConv(node_features, hidden_dim, heads=num_heads, dropout=dropout)
-        )
-        
+        self.gat_layers.append(GATConv(node_features, hidden_dim, heads=num_heads, dropout=dropout))
         # Hidden layers
         for _ in range(num_layers - 2):
-            self.gat_layers.append(
-                GATConv(hidden_dim * num_heads, hidden_dim, heads=num_heads, dropout=dropout)
-            )
-        
-        # Last layer (single head for classification)
-        self.gat_layers.append(
-            GATConv(hidden_dim * num_heads, hidden_dim, heads=1, dropout=dropout)
-        )
+            self.gat_layers.append(GATConv(hidden_dim * num_heads, hidden_dim, heads=num_heads, dropout=dropout))
+        # Last conv layer
+        self.gat_layers.append(GATConv(hidden_dim * num_heads, hidden_dim, heads=1, dropout=dropout))
         
         # Classification head
         self.classifier = nn.Sequential(
@@ -39,30 +40,90 @@ class HepatotoxicityGAT(nn.Module):
             nn.Linear(hidden_dim // 2, 1)
         )
         
+        # Loss function with class weighting
+        # Note: pos_weight must be a tensor
+        self.criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(pos_weight) if pos_weight else None)
+
+        # Storage for validation metrics
+        self.validation_step_outputs = []
+
     def forward(self, x, edge_index, batch, return_attention_weights=False):
         attention_weights = []
         
-        # GAT layers
         for i, gat_layer in enumerate(self.gat_layers):
             if return_attention_weights:
-                x, (edge_index_att, att_weights) = gat_layer(
-                    x, edge_index, return_attention_weights=True
-                )
+                x, (edge_index_att, att_weights) = gat_layer(x, edge_index, return_attention_weights=True)
                 attention_weights.append((edge_index_att, att_weights))
             else:
                 x = gat_layer(x, edge_index)
             
-            # Apply activation and dropout (except for last layer)
             if i < len(self.gat_layers) - 1:
                 x = F.elu(x)
                 x = F.dropout(x, p=self.dropout, training=self.training)
         
-        # Global pooling
         x = global_mean_pool(x, batch)
-        
-        # Classification
         out = self.classifier(x)
         
         if return_attention_weights:
             return out, attention_weights
         return out
+
+    def training_step(self, batch, batch_idx):
+        out = self(batch.x, batch.edge_index, batch.batch)
+        loss = self.criterion(out.squeeze(), batch.y)
+        
+        # Logs metrics to progress bar and logger
+        self.log('train_loss', loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=batch.num_graphs)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        out = self(batch.x, batch.edge_index, batch.batch)
+        loss = self.criterion(out.squeeze(), batch.y)
+        
+        probs = torch.sigmoid(out.squeeze())
+        preds = (probs > 0.5).float()
+        
+        # Store for epoch-end calculation
+        self.validation_step_outputs.append({
+            'val_loss': loss,
+            'preds': preds,
+            'probs': probs,
+            'targets': batch.y
+        })
+        return loss
+
+    def on_validation_epoch_end(self):
+        # Aggregate results
+        outputs = self.validation_step_outputs
+        if not outputs:
+            return
+            
+        avg_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
+        all_preds = torch.cat([x['preds'] for x in outputs]).cpu().numpy()
+        all_probs = torch.cat([x['probs'] for x in outputs]).cpu().numpy()
+        all_targets = torch.cat([x['targets'] for x in outputs]).cpu().numpy()
+        
+        # Calculate metrics
+        val_f1 = f1_score(all_targets, all_preds)
+        try:
+            val_auc = roc_auc_score(all_targets, all_probs)
+        except:
+            val_auc = 0.5
+            
+        # Log metrics
+        self.log('val_loss', avg_loss, prog_bar=True)
+        self.log('val_f1', val_f1, prog_bar=True)
+        self.log('val_auc', val_auc, prog_bar=True)
+        
+        self.validation_step_outputs.clear() # Free memory
+
+    def configure_optimizers(self):
+        optimizer = optim.Adam(self.parameters(), lr=self.lr, weight_decay=1e-4)
+        # Lightning handles scheduler stepping automatically based on 'monitor'
+        scheduler = {
+            'scheduler': ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=10),
+            'monitor': 'val_f1', 
+            'interval': 'epoch',
+            'frequency': 1
+        }
+        return [optimizer], [scheduler]
