@@ -1,24 +1,16 @@
-def generate_final_insights(test_results, lgbm_results, gat_results):
-    """Generate final insights and recommendations"""
-    print(f"\n🎯 FINAL INSIGHTS & RECOMMENDATIONS")
-    print("=" * 60)
+def print_model_comparison(test_results):
+    """Prints a clean comparison table of the results"""
+    lgbm = test_results['lgbm']
+    gat = test_results['gat']
     
-    lgbm_score = test_results['lgbm']['f1']
-    gat_score = test_results['gat']['f1']
+    print("\n" + "="*45)
+    print(f"{'METRIC':<15} | {'LGBM':<10} | {'GAT':<10}")
+    print("-" * 45)
+    print(f"{'F1-Score':<15} | {lgbm['f1']:.4f}     | {gat['f1']:.4f}")
+    print(f"{'ROC-AUC':<15} | {lgbm['auc']:.4f}     | {gat['auc']:.4f}")
+    print(f"{'Precision':<15} | {lgbm['precision']:.4f}     | {gat['precision']:.4f}")
+    print(f"{'Recall':<15} | {lgbm['recall']:.4f}     | {gat['recall']:.4f}")
+    print("="*45)
     
-    print(f"\n🏆 OVERALL PERFORMANCE:")
-    if gat_score > lgbm_score:
-        print(f"✓ Winner: GAT (+{gat_score - lgbm_score:.4f})")
-    else:
-        print(f"✓ Winner: LGBM (+{lgbm_score - gat_score:.4f})")
-        
-    print(f"\n⚡ Efficiency:")
-    print(f"   • LGBM: Fast training, simpler model")
-    print(f"   • GAT: {gat_results['training_time']/60:.1f} min training")
-
-def create_project_summary_report(test_results):
-    print(f"\n🎯 FINAL TEST RESULTS SUMMARY:")
-    print(f"   Model    │ F1-Score │ ROC-AUC")
-    print(f"   ─────────┼──────────┼────────")
-    print(f"   LGBM     │  {test_results['lgbm']['f1']:.4f}  │ {test_results['lgbm']['auc']:.4f}")
-    print(f"   GAT      │  {test_results['gat']['f1']:.4f}  │ {test_results['gat']['auc']:.4f}")
+    winner = "GAT" if gat['f1'] > lgbm['f1'] else "LGBM"
+    print(f"🏆 Best F1-Score: {winner}\n")
