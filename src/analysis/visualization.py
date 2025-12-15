@@ -54,9 +54,15 @@ def visualize_attention_weights(model, sample_molecules, device):
     fig, axes = plt.subplots(1, 2, figsize=(12, 6))
     
     for i, mol in enumerate(sample_molecules[:2]):
-        batch = Data(x=mol.x, edge_index=mol.edge_index, batch=torch.zeros(mol.x.shape[0], dtype=torch.long)).to(device)
+        batch = Data(
+            x=mol.x, 
+            edge_index=mol.edge_index, 
+            edge_attr=mol.edge_attr,
+            batch=torch.zeros(mol.x.shape[0], dtype=torch.long)
+        ).to(device)
+        
         with torch.no_grad():
-            out, att = model(batch.x, batch.edge_index, batch.batch, return_attention_weights=True)
+            out, att = model(batch.x, batch.edge_index, batch.edge_attr, batch.batch, return_attention_weights=True)
             prob = torch.sigmoid(out).item()
             
         # Graph viz

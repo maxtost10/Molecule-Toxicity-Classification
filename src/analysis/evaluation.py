@@ -49,7 +49,8 @@ def evaluate_on_test_set(lgbm_results, gat_results, lgbm_data, gnn_loaders):
     with torch.no_grad():
         for batch in gnn_loaders['test']:
             batch = batch.to(device)
-            out = gat_model(batch.x, batch.edge_index, batch.batch)
+            # CRITICAL FIX: Added batch.edge_attr to the model call
+            out = gat_model(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
             
             probs = torch.sigmoid(out.squeeze()).cpu().numpy()
             preds = (probs > 0.5).astype(int)
