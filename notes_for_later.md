@@ -1,0 +1,2 @@
+- Make number of message passing steps a hyperparameter.
+- Think about learnable representation
