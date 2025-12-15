@@ -1,3 +1,3 @@
 - Think about learnable representation
-- Richer Edge Features
 - Fingerprint Augmentation
+- Verify that bond features were taken
