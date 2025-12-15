@@ -10,3 +10,4 @@ lightgbm
 shap
 rdkit
 scipy
+pytorch-lightning
