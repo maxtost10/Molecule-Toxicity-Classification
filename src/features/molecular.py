@@ -3,7 +3,7 @@ from src.config import Config
 
 try:
     from rdkit import Chem
-    from rdkit.Chem import Descriptors, rdMolDescriptors
+    from rdkit.Chem import Descriptors, rdMolDescriptors, rdFingerprintGenerator
     RDKIT_AVAILABLE = True
 except ImportError:
     RDKIT_AVAILABLE = False
@@ -31,6 +31,7 @@ def extract_molecular_features(molecules, descriptor_names=None):
     # Generate feature names
     morgan_names = [f'Morgan_bit_{i}' for i in range(Config.MORGAN_BITS)]
     feature_names = morgan_names + descriptor_names
+    morgan_gen = rdFingerprintGenerator.GetMorganGenerator(radius=2, fpSize=Config.MORGAN_BITS)
     
     print(f"  - Morgan fingerprints: {Config.MORGAN_BITS} bits")
     print(f"  - Molecular descriptors: {len(descriptor_names)} features")
@@ -52,9 +53,7 @@ def extract_molecular_features(molecules, descriptor_names=None):
                 continue
             
             # Extract Morgan fingerprints
-            morgan_fp = rdMolDescriptors.GetMorganFingerprintAsBitVect(
-                mol, radius=2, nBits=Config.MORGAN_BITS
-            )
+            morgan_fp = morgan_gen.GetFingerprint(mol)
             morgan_bits = list(morgan_fp)
             
             # Extract molecular descriptors
