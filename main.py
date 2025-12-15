@@ -14,9 +14,8 @@ from src.analysis import (
     statistical_significance_testing,
     analyze_lgbm_interpretability,
     visualize_attention_weights,
-    create_comprehensive_comparison_plots,
-    generate_final_insights,
-    create_project_summary_report
+    create_comparison_plots,
+    print_model_comparison
 )
 
 def main():
@@ -103,16 +102,14 @@ def main():
 
     # Run evaluation pipeline
     test_results = evaluate_on_test_set(lgbm_results, gat_results, lgbm_data, gnn_loaders)
-    create_comprehensive_comparison_plots(test_results, lgbm_results, gat_results, dm.node_features_dim)
+    create_comparison_plots(test_results)
     statistical_significance_testing(test_results)
-    generate_final_insights(test_results, lgbm_results, gat_results)
-    create_project_summary_report(test_results)
+    print_model_comparison(test_results)
 
     # Optional: GAT Attention Visualization
     # We grab a few samples from the validation split manually
     print("\n🔍 Generating Attention Visualization...")
     val_molecules = dm.splits['val']['molecules'][:20]
-    # Small helper to wrap raw objects into Data objects with labels for the vis function
     sample_molecules = []
     for i, mol in enumerate(val_molecules):
         mol_copy = Data(
