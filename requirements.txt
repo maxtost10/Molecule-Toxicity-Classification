@@ -11,3 +11,4 @@ shap
 rdkit
 scipy
 pytorch-lightning
+tensorboard

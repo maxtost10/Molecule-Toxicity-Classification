@@ -23,7 +23,7 @@ class Config:
     
     # Feature settings
     MORGAN_BITS = 512 if QUICK_TEST else 2048
-    BATCH_SIZE = 2 if QUICK_TEST else 64
+    BATCH_SIZE = 25 if QUICK_TEST else 64
     
     # Analysis settings
     SHAP_SAMPLES = 50 if QUICK_TEST else 100
