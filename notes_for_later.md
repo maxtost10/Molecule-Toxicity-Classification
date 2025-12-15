@@ -2,3 +2,4 @@
 - Think about learnable representation
 - Make sure we do not stratify the data twice with the LGBM.
 - Make it pytorch lightning
+- Make the code slimmer and more professional
