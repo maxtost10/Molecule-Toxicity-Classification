@@ -1,5 +1,3 @@
-- Make number of message passing steps a hyperparameter.
 - Think about learnable representation
-- Make it pytorch lightning
-- Make the code slimmer and more professional
-- Is statistical_significance_testing necessary
+- Richer Edge Features
+- Fingerprint Augmentation
