@@ -159,4 +159,4 @@ Both models performed comparably in terms of ranking ability (AUC ~0.87-0.88), t
     ```bash
     python main.py
     ```
-    *This will automatically download the Tox21 data, train both models, and generate the figures in the `Figures/` directory.*
+    *This will automatically download the Tox21 data, train both models, and generate the figures in the `Figures/` directory. No need for a fancy GPU or anything, you should be able to run it on a laptop.*
