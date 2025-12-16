@@ -135,7 +135,7 @@ def create_comparison_plots(test_results):
     names = {'lgbm': 'LGBM', 'gat': 'GAT'}
     
     for m in models:
-        y_true = test_results['targets']
+        y_true = test_results[m]['targets']
         y_score = test_results[m]['probabilities']
         
         # ROC

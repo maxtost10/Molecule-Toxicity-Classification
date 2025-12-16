@@ -84,7 +84,8 @@ def evaluate_on_test_set(lgbm_results, gat_results, lgbm_data, gnn_loaders):
             'precision': lgbm_precision,
             'recall': lgbm_recall,
             'specificity': lgbm_specificity,
-            'confusion_matrix': lgbm_cm
+            'confusion_matrix': lgbm_cm,
+            'targets': y_test,
         },
         'gat': {
             'predictions': gat_test_predictions,
@@ -95,39 +96,9 @@ def evaluate_on_test_set(lgbm_results, gat_results, lgbm_data, gnn_loaders):
             'precision': gat_precision,
             'recall': gat_recall,
             'specificity': gat_specificity,
-            'confusion_matrix': gat_cm
-        },
-        'targets': y_test
+            'confusion_matrix': gat_cm,
+            'targets': gat_test_targets,
+        }
     }
     
     return test_results
-
-def statistical_significance_testing(test_results):
-    """Perform statistical significance tests"""
-    print(f"\n📈 STATISTICAL SIGNIFICANCE TESTING")
-    print("-" * 40)
-    
-    lgbm_probs = np.array(test_results['lgbm']['probabilities'])
-    gat_probs = np.array(test_results['gat']['probabilities'])
-    true_labels = np.array(test_results['targets'])
-    
-    # McNemar's test for comparing classifiers
-    lgbm_correct = (test_results['lgbm']['predictions'] == true_labels)
-    gat_correct = (test_results['gat']['predictions'] == true_labels)
-    
-    # Contingency table for McNemar's test
-    lgbm_correct_gat_wrong = np.sum(lgbm_correct & ~gat_correct)
-    lgbm_wrong_gat_correct = np.sum(~lgbm_correct & gat_correct)
-    
-    # McNemar's test statistic
-    if (lgbm_correct_gat_wrong + lgbm_wrong_gat_correct) > 0:
-        mcnemar_stat = (abs(lgbm_correct_gat_wrong - lgbm_wrong_gat_correct) - 1)**2 / (lgbm_correct_gat_wrong + lgbm_wrong_gat_correct)
-        mcnemar_p = 1 - stats.chi2.cdf(mcnemar_stat, 1)
-        
-        print(f"McNemar's p-value: {mcnemar_p:.4f}")
-        if mcnemar_p < 0.05:
-            print("Conclusion: Significant difference between models")
-        else:
-            print("Conclusion: No significant difference between models")
-    else:
-        print(f"Cannot perform McNemar's test (no discordant pairs)")

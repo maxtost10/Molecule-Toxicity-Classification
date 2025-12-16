@@ -11,7 +11,6 @@ from src.models import HepatotoxicityGAT
 from src.training import train_lgbm_with_class_weights
 from src.analysis import (
     evaluate_on_test_set,
-    statistical_significance_testing,
     analyze_lgbm_interpretability,
     visualize_attention_weights,
     create_comparison_plots,
@@ -101,7 +100,6 @@ def main():
     # Run evaluation pipeline
     test_results = evaluate_on_test_set(lgbm_results, gat_results, lgbm_data, gnn_loaders)
     create_comparison_plots(test_results)
-    statistical_significance_testing(test_results)
     print_model_comparison(test_results)
 
     print("\n🔍 Generating Attention Visualization...")
