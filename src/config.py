@@ -15,7 +15,7 @@ class Config:
     LGBM_LEAVES = 15 if QUICK_TEST else 31
     
     # GAT settings  
-    GAT_EPOCHS = 20 if QUICK_TEST else 100
+    GAT_EPOCHS = 2 if QUICK_TEST else 100
     GAT_PATIENCE = 10 if QUICK_TEST else 20
     GAT_HIDDEN = 32 if QUICK_TEST else 128
     GAT_HEADS = 2 if QUICK_TEST else 5

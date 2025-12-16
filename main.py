@@ -107,18 +107,8 @@ def main():
     print_model_comparison(test_results)
 
     # Optional: GAT Attention Visualization
-    # We grab a few samples from the validation split manually
     print("\n🔍 Generating Attention Visualization...")
-    val_molecules = dm.splits['val']['molecules'][:20]
-    sample_molecules = []
-    for i, mol in enumerate(val_molecules):
-        mol_copy = Data(
-            x=mol.x.clone().to(torch.float), edge_index=mol.edge_index.clone(),
-            edge_attr=mol.edge_attr.clone() if mol.edge_attr is not None else None,
-            y=torch.tensor([dm.splits['val']['targets'][i]]),
-            smiles=mol.smiles if hasattr(mol, 'smiles') else None
-        )
-        sample_molecules.append(mol_copy)
+    sample_molecules = [dm.val_dataset[i] for i in range(20)]
     
     visualize_attention_weights(model, sample_molecules, model.device)
     

@@ -64,14 +64,6 @@ class LiverDataModule(pl.LightningDataModule):
             # This updates edge_index to include connections to the new node
             data = virtual_node_transform(data)
             
-            # 3. Add Virtual Node Features
-            # T.VirtualNode adds the topology but not the features.
-            # We append a row of zeros to 'x' to represent the virtual node state.
-            # This acts as a "bias" or "blank slate" for the GNN to write to.
-            num_features = data.x.size(1)
-            virtual_node_features = torch.zeros(1, num_features)
-            data.x = torch.cat([data.x, virtual_node_features], dim=0)
-            
             processed_data.append(data)
             
         return processed_data
