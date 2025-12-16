@@ -106,11 +106,16 @@ def main():
     statistical_significance_testing(test_results)
     print_model_comparison(test_results)
 
-    # Optional: GAT Attention Visualization
     print("\n🔍 Generating Attention Visualization...")
-    sample_molecules = [dm.val_dataset[i] for i in range(20)]
     
-    visualize_attention_weights(model, sample_molecules, model.device)
+    # 1. Find the first Ground Truth Positive (Toxic)
+    pos_sample = next(d for d in dm.val_dataset if d.y.item() == 1.0)
+    
+    # 2. Find the first Ground Truth Negative (Non-Toxic)
+    neg_sample = next(d for d in dm.val_dataset if d.y.item() == 0.0)
+    
+    # 3. Visualize
+    visualize_attention_weights(model, [pos_sample, neg_sample], model.device)
     
     print("\n✅ Project execution finished.")
 

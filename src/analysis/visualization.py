@@ -45,13 +45,15 @@ def analyze_lgbm_interpretability(lgbm_results, lgbm_data, top_n=10):
         print(f"⚠️ SHAP failed: {e}")
 
 def visualize_attention_weights(model, sample_molecules, device):
-    """Visualizes attention for a few samples"""
-    print(f"\n🔍 Generating GAT Attention Plot...")
+    """
+    Visualizes OUTGOING attention (Influence).
+    Highlights atoms that heavily influenced the Graph (Neighbors + Virtual Node).
+    """
+    print(f"\n🔍 Generating GAT Attention Plot (Influence)...")
     model.eval()
     os.makedirs('./Figures', exist_ok=True)
     
-    # Plot first 2 samples
-    fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
     
     for i, mol in enumerate(sample_molecules[:2]):
         batch = Data(
@@ -61,31 +63,62 @@ def visualize_attention_weights(model, sample_molecules, device):
             batch=torch.zeros(mol.x.shape[0], dtype=torch.long)
         ).to(device)
         
-        with torch.no_grad():
-            out, att = model(batch.x, batch.edge_index, batch.edge_attr, batch.batch, return_attention_weights=True)
-            prob = torch.sigmoid(out).item()
-            
-        # Graph viz
-        G = to_networkx(mol, to_undirected=True, remove_self_loops=True)
-        pos = nx.spring_layout(G, seed=42)
+        virtual_node_idx = batch.x.shape[0] - 1
         
-        # Color by attention
-        node_colors = 'lightblue'
-        if att:
-            edge_index, weights = att[0]
-            importance = torch.zeros(mol.x.shape[0])
-            for idx, w in enumerate(weights.cpu()):
-                src = edge_index[0, idx]
-                importance[src] += w.mean().item()
-            
-            if importance.max() > 0:
-                normalized_importance = importance.numpy() / importance.max().item()
-                node_colors = plt.cm.Reds(normalized_importance)
-            else:
-                 node_colors = plt.cm.Reds(importance.numpy())
+        with torch.no_grad():
+            out, att_list = model(batch.x, batch.edge_index, batch.edge_attr, batch.batch, return_attention_weights=True)
+            prob = torch.sigmoid(out).item()
 
-        nx.draw(G, pos, ax=axes[i], node_color=node_colors, with_labels=True, node_size=300)
-        axes[i].set_title(f"Label: {int(mol.y.item())} | Pred: {prob:.2f}")
+        # Influence accumulator for REAL nodes only
+        node_influence = torch.zeros(virtual_node_idx)
+        
+        # Aggregate influence across ALL layers
+        for edge_index_att, weights in att_list:
+            
+            # CRITICAL CHANGE: 
+            # We only filter out cases where the SOURCE is the virtual node.
+            # We KEEP cases where the TARGET is the virtual node (Atom -> VN).
+            # This credits the atom for influencing the global state.
+            
+            src_nodes = edge_index_att[0] # Source (The Influencer)
+            
+            # Only look at edges starting from REAL atoms
+            mask = (src_nodes != virtual_node_idx)
+            
+            valid_sources = src_nodes[mask]
+            valid_weights = weights[mask]
+            
+            # Accumulate influence onto the SOURCE node
+            for idx, w in enumerate(valid_weights.cpu()):
+                source_atom = valid_sources[idx].item()
+                # w is [heads, 1], mean across heads
+                weight_val = w.mean().item()
+                
+                if source_atom < virtual_node_idx:
+                    node_influence[source_atom] += weight_val
+
+        # --- PREPARE PLOT ---
+        # Remove VN from graph structure
+        real_edge_mask = (batch.edge_index[0] != virtual_node_idx) & \
+                         (batch.edge_index[1] != virtual_node_idx)
+        filtered_edge_index = batch.edge_index[:, real_edge_mask]
+        
+        mol_viz = Data(edge_index=filtered_edge_index, num_nodes=virtual_node_idx)
+        G = to_networkx(mol_viz, to_undirected=True, remove_self_loops=True)
+        
+        # Color nodes by their calculated Influence
+        node_colors = 'lightblue'
+        if node_influence.max() > 0:
+            normalized_inf = node_influence.numpy() / node_influence.max().item()
+            node_colors = plt.cm.Reds(normalized_inf)
+            
+        try:
+            pos = nx.spring_layout(G, seed=42)
+            nx.draw(G, pos, ax=axes[i], node_color=node_colors, 
+                    with_labels=True, node_size=400, edge_color='gray')
+            axes[i].set_title(f"Label: {int(mol.y.item())} | Pred: {prob:.2f}\n(Red = High Influence)")
+        except Exception as e:
+            print(f"Warning: Could not plot sample {i}: {e}")
 
     plt.tight_layout()
     plt.savefig('./Figures/gat_attention.png', dpi=300)
