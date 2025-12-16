@@ -98,9 +98,12 @@ data = virtual_node_transform(data)
 It is not enough to predict toxicity; we must know *why* a molecule is toxic.
 
 ### LightGBM: SHAP Analysis
-Using SHAP (SHapley Additive exPlanations), we identified that specific structural patterns (Morgan bits) and the number of aromatic rings were the strongest predictors of toxicity.
+Using SHAP (SHapley Additive exPlanations), we identified that the Number of Aromatic Rings (NumAromaticRings) was a top predictor for toxicity.
 
 ![LGBM SHAP](Figures/lgbm_shap.png)
+
+
+**🧪 Science Check**: This aligns with known toxicology. Aromatic rings are chemically stable, but upon metabolic bioactivation by the liver's cytochrome P450 system, they can be converted into reactive metabolites (like epoxides or quinones). These reactive species can form covalent adducts with DNA or proteins, leading to cellular injury—a classic mechanism of hepatotoxicity.
 
 ### GAT: Attention Rollout
 For the Graph model, we implemented a custom attention visualization. Standard attention only looks at the last layer. We perform **Attention Rollout** by accumulating the "outgoing influence" of every atom across **all layers** (not just the final one). This tells us which atoms consistently drove the decision-making process throughout the network's depth.
@@ -125,7 +128,7 @@ for edge_index_att, weights in att_list:
 ```
 
 ![GAT Attention](Figures/gat_attention.png)
-*Red nodes indicate atoms that the model paid the most attention to when classifying the molecule.*
+*Visualizing Influence: Darker red nodes indicate atoms that exerted the highest influence on the final prediction, while lighter orange nodes contributed moderately.*
 
 ---
 
