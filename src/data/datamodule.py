@@ -3,7 +3,9 @@ import pytorch_lightning as pl
 from torch_geometric.loader import DataLoader
 from torch_geometric.data import Data
 import torch_geometric.transforms as T
+from rdkit.Chem import rdFingerprintGenerator
 from src.config import Config
+from rdkit import Chem
 from src.data.loader import load_and_prepare_liver_data, stratified_split_data
 
 class LiverDataModule(pl.LightningDataModule):
@@ -46,22 +48,37 @@ class LiverDataModule(pl.LightningDataModule):
         molecules = split_data['molecules']
         targets = split_data['targets']
         
-        # Initialize the Virtual Node transform
-        # This adds edges from a new node index to all existing nodes
         virtual_node_transform = T.VirtualNode()
         
+        morgan_gen = rdFingerprintGenerator.GetMorganGenerator(
+            radius=2, 
+            fpSize=Config.MORGAN_BITS
+        )
+        
         for i, mol in enumerate(molecules):
-            # 1. Basic Conversion
+            # 1. Generate Morgan Fingerprint
+            # We need the RDKit object. If 'mol' is just a container, we rebuild from SMILES.
+            rdkit_mol = Chem.MolFromSmiles(mol.smiles)
+            if rdkit_mol is None:
+                continue # Skip invalid smiles
+            
+            # 2. Use the Generator
+            fp = morgan_gen.GetFingerprint(rdkit_mol)
+            
+            # Convert to Tensor
+            morgan_tensor = torch.tensor(list(fp), dtype=torch.float).unsqueeze(0) # Shape: [1, nBits]
+
+            # 3. Create PyG Data Object
             data = Data(
-                x=mol.x.clone().to(torch.float),
+                x=mol.x.clone().to(torch.long), 
                 edge_index=mol.edge_index.clone(),
                 edge_attr=mol.edge_attr.clone() if mol.edge_attr is not None else None,
                 y=torch.tensor([targets[i]], dtype=torch.float),
-                smiles=mol.smiles if hasattr(mol, 'smiles') else None
+                morgan_fp=morgan_tensor,
+                smiles=mol.smiles
             )
             
-            # 2. Add Virtual Node Topology (Edges)
-            # This updates edge_index to include connections to the new node
+            # 4. Add Virtual Node (Topology + Feature Row)
             data = virtual_node_transform(data)
             
             processed_data.append(data)

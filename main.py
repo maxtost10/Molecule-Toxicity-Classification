@@ -32,7 +32,6 @@ def main():
     # PHASE 1: LGBM BASELINE (Classic ML)
     # ---------------------------------------------------------
     print("\n🏗️ PHASE 1: LGBM BASELINE")
-    # We access the raw splits inside the DM for the feature extractor
     lgbm_data, feature_names = prepare_lgbm_data(dm.splits)
     lgbm_results = train_lgbm_with_class_weights(lgbm_data, feature_names)
     
@@ -53,6 +52,7 @@ def main():
     # Init Model
     model = HepatotoxicityGAT(
         node_features=dm.node_features_dim,
+        morgan_dim=Config.MORGAN_BITS,
         pos_weight=pos_weight,
         hidden_dim=Config.GAT_HIDDEN,
         num_heads=Config.GAT_HEADS,
@@ -67,7 +67,7 @@ def main():
     trainer = pl.Trainer(
         max_epochs=Config.GAT_EPOCHS,
         callbacks=[checkpoint_callback, early_stop_callback],
-        accelerator='auto',  # Automatically detects GPU/CPU
+        accelerator='auto',
         devices='auto',
         enable_progress_bar=True,
         log_every_n_steps=10
@@ -89,15 +89,13 @@ def main():
     # ---------------------------------------------------------
     print("\n📊 PHASE 3: FINAL ANALYSIS")
     
-    # Construct results dictionary to bridge PL with your analysis module
     gat_results = {
         'model': model,
         'device': model.device, 
-        'training_time': 0, # PL doesn't track this by default, but minor detail
+        'training_time': 0, 
         'val_f1': trainer.callback_metrics.get('val_f1', 0).item()
     }
     
-    # Create loader dictionary for the analysis tools
     gnn_loaders = {'test': dm.test_dataloader(), 'val': dm.val_dataloader()}
 
     # Run evaluation pipeline

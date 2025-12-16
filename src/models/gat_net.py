@@ -9,10 +9,11 @@ from sklearn.metrics import f1_score, roc_auc_score
 
 class HepatotoxicityGAT(pl.LightningModule):
     """
-    Graph Attention Network for hepatotoxicity prediction.
+    Dual-Branch GAT + Morgan Fingerprint Network.
+    Fuses learned Graph Embeddings with Molecular Fingerprints.
     """
     
-    def __init__(self, node_features, pos_weight=None, hidden_dim=64, num_heads=4, num_layers=3, dropout=0.2, lr=0.001):
+    def __init__(self, node_features, morgan_dim=2048, pos_weight=None, hidden_dim=64, num_heads=4, num_layers=3, dropout=0.2, lr=0.001):
         super(HepatotoxicityGAT, self).__init__()
         
         self.save_hyperparameters()
@@ -29,7 +30,7 @@ class HepatotoxicityGAT(pl.LightningModule):
             for _ in range(node_features)
         ])
         
-        # --- 2. GAT Layers ---
+        # --- 2. Graph Branch: GAT Layers ---
         self.gat_layers = nn.ModuleList()
         
         self.gat_layers.append(
@@ -45,38 +46,39 @@ class HepatotoxicityGAT(pl.LightningModule):
             GATConv(hidden_dim * num_heads, hidden_dim, heads=1, dropout=dropout, edge_dim=3)
         )
         
-        # --- 3. Classifier ---
+        # --- 3. Morgan Branch: Encoder ---
+        # Projects high-dim fingerprint (2048) down to hidden_dim space
+        self.morgan_encoder = nn.Sequential(
+            nn.Linear(morgan_dim, hidden_dim),
+            nn.BatchNorm1d(hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout)
+        )
+        
+        # --- 4. Fusion & Classifier ---
+        # Input size is hidden_dim (Graph) + hidden_dim (Morgan) = 2 * hidden_dim
         self.classifier = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.Linear(hidden_dim * 2, hidden_dim),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_dim // 2, 1)
+            nn.Linear(hidden_dim, 1)
         )
         
         self.criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(pos_weight) if pos_weight else None)
         self.validation_step_outputs = []
 
-    def forward(self, x, edge_index, edge_attr, batch, return_attention_weights=False):
-        # --- STEP 1: Sum of Embeddings ---
-        # x shape: [Num_Nodes, Num_Features] (e.g., 9 columns)
-        # We iterate over columns and add their embeddings together.
+    def forward(self, x, edge_index, edge_attr, batch, morgan_fp, return_attention_weights=False):
+        # === BRANCH 1: GRAPH ===
         
+        # 1. Embed Inputs (Sum of Embeddings)
         x_embedded = 0
-        
-        # Loop through each column (Atom Type, Degree, etc.)
         for i, embedding_layer in enumerate(self.feature_embeddings):
-            # Extract column 'i'
             column_values = x[:, i].long()
-            
-            # Embed it and add to total
-            # Each layer learns: "What does Degree=3 mean?" vs "What does Carbon mean?"
             x_embedded += embedding_layer(column_values)
-            
         x = x_embedded
         
-        # --- STEP 2: GAT Layers ---
+        # 2. GAT Message Passing
         attention_weights = []
-        
         for i, gat_layer in enumerate(self.gat_layers):
             if return_attention_weights:
                 x, (edge_index_att, att_weights) = gat_layer(
@@ -90,22 +92,31 @@ class HepatotoxicityGAT(pl.LightningModule):
                 x = F.elu(x)
                 x = F.dropout(x, p=self.dropout, training=self.training)
         
-        # --- STEP 3: Pooling & Classification ---
-        x = global_mean_pool(x, batch)
-        out = self.classifier(x)
+        # 3. Global Pooling (Graph Representation)
+        x_graph = global_mean_pool(x, batch)
+        
+        # === BRANCH 2: MORGAN FINGERPRINT ===
+        x_morgan = self.morgan_encoder(morgan_fp)
+        
+        # === FUSION ===
+        # Concatenate both representations
+        x_fused = torch.cat([x_graph, x_morgan], dim=1)
+        
+        # Classify
+        out = self.classifier(x_fused)
         
         if return_attention_weights:
             return out, attention_weights
         return out
 
     def training_step(self, batch, batch_idx):
-        out = self(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
+        out = self(batch.x, batch.edge_index, batch.edge_attr, batch.batch, batch.morgan_fp)
         loss = self.criterion(out.squeeze(), batch.y)
         self.log('train_loss', loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=batch.num_graphs)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        out = self(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
+        out = self(batch.x, batch.edge_index, batch.edge_attr, batch.batch, batch.morgan_fp)
         loss = self.criterion(out.squeeze(), batch.y)
         probs = torch.sigmoid(out.squeeze())
         preds = (probs > 0.5).float()

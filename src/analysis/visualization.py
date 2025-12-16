@@ -60,13 +60,21 @@ def visualize_attention_weights(model, sample_molecules, device):
             x=mol.x, 
             edge_index=mol.edge_index, 
             edge_attr=mol.edge_attr,
-            batch=torch.zeros(mol.x.shape[0], dtype=torch.long)
+            batch=torch.zeros(mol.x.shape[0], dtype=torch.long),
+            morgan_fp=mol.morgan_fp
         ).to(device)
         
         virtual_node_idx = batch.x.shape[0] - 1
         
         with torch.no_grad():
-            out, att_list = model(batch.x, batch.edge_index, batch.edge_attr, batch.batch, return_attention_weights=True)
+            out, att_list = model(
+                batch.x, 
+                batch.edge_index, 
+                batch.edge_attr, 
+                batch.batch, 
+                batch.morgan_fp,
+                return_attention_weights=True
+            )
             prob = torch.sigmoid(out).item()
 
         # Influence accumulator for REAL nodes only
@@ -74,15 +82,9 @@ def visualize_attention_weights(model, sample_molecules, device):
         
         # Aggregate influence across ALL layers
         for edge_index_att, weights in att_list:
-            
-            # CRITICAL CHANGE: 
-            # We only filter out cases where the SOURCE is the virtual node.
-            # We KEEP cases where the TARGET is the virtual node (Atom -> VN).
-            # This credits the atom for influencing the global state.
-            
             src_nodes = edge_index_att[0] # Source (The Influencer)
             
-            # Only look at edges starting from REAL atoms
+            # Only look at edges starting from REAL atoms (Source != Virtual Node)
             mask = (src_nodes != virtual_node_idx)
             
             valid_sources = src_nodes[mask]
@@ -91,14 +93,12 @@ def visualize_attention_weights(model, sample_molecules, device):
             # Accumulate influence onto the SOURCE node
             for idx, w in enumerate(valid_weights.cpu()):
                 source_atom = valid_sources[idx].item()
-                # w is [heads, 1], mean across heads
                 weight_val = w.mean().item()
                 
                 if source_atom < virtual_node_idx:
                     node_influence[source_atom] += weight_val
 
         # --- PREPARE PLOT ---
-        # Remove VN from graph structure
         real_edge_mask = (batch.edge_index[0] != virtual_node_idx) & \
                          (batch.edge_index[1] != virtual_node_idx)
         filtered_edge_index = batch.edge_index[:, real_edge_mask]
@@ -106,7 +106,6 @@ def visualize_attention_weights(model, sample_molecules, device):
         mol_viz = Data(edge_index=filtered_edge_index, num_nodes=virtual_node_idx)
         G = to_networkx(mol_viz, to_undirected=True, remove_self_loops=True)
         
-        # Color nodes by their calculated Influence
         node_colors = 'lightblue'
         if node_influence.max() > 0:
             normalized_inf = node_influence.numpy() / node_influence.max().item()
