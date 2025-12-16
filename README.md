@@ -47,7 +47,7 @@ liver_toxicity_project/
 
 ---
 
-## 📖 The Story: Why Computational Toxicology?
+## Why Computational Toxicology?
 
 In 1997, the FDA approved **Troglitazone** (Rezulin), a breakthrough drug for diabetes. It had passed animal testing and clinical trials. Yet, within three years, it was withdrawn from the market after causing 63 deaths due to irreversible liver failure.
 
