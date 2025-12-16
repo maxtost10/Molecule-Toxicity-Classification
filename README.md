@@ -145,7 +145,7 @@ Both models performed comparably in terms of ranking ability (AUC ~0.87-0.88), t
 
 ![Model Comparison](Figures/model_comparison.png)
 
-**Conclusion**: While the LGBM is computationally cheaper and slightly more precise, the GAT model offers higher recall (catching more toxic drugs) and provides superior structural interpretability via attention maps, which is crucial for medical chemists.
+**Conclusion**: While the LGBM is computationally cheaper and slightly more precise, the GAT model offers higher recall (catching more toxic drugs) and provides superior structural interpretability via attention maps, which is crucial for chemists.
 
 ---
 
