@@ -4,7 +4,7 @@ class Config:
     Toggles between QUICK_TEST mode for debugging and full training mode.
     """
     # Global test mode
-    QUICK_TEST = True  # Set to False for full training
+    QUICK_TEST = False
     
     # Data settings
     MAX_MOLECULES = 200 if QUICK_TEST else None

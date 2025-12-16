@@ -56,19 +56,24 @@ class LiverDataModule(pl.LightningDataModule):
         )
         
         for i, mol in enumerate(molecules):
-            # 1. Generate Morgan Fingerprint
+            # 1. Check for valid node features (mol.x)
+            # Ensure x exists and has nodes
+            if mol.x is None or mol.x.shape[0] == 1:
+                continue
+
+            # 2. Generate Morgan Fingerprint
             # We need the RDKit object. If 'mol' is just a container, we rebuild from SMILES.
             rdkit_mol = Chem.MolFromSmiles(mol.smiles)
             if rdkit_mol is None:
                 continue # Skip invalid smiles
             
-            # 2. Use the Generator
+            # 3. Use the Generator
             fp = morgan_gen.GetFingerprint(rdkit_mol)
             
             # Convert to Tensor
             morgan_tensor = torch.tensor(list(fp), dtype=torch.float).unsqueeze(0) # Shape: [1, nBits]
 
-            # 3. Create PyG Data Object
+            # 4. Create PyG Data Object
             data = Data(
                 x=mol.x.clone().to(torch.long), 
                 edge_index=mol.edge_index.clone(),
@@ -78,7 +83,7 @@ class LiverDataModule(pl.LightningDataModule):
                 smiles=mol.smiles
             )
             
-            # 4. Add Virtual Node (Topology + Feature Row)
+            # 5. Add Virtual Node (Topology + Feature Row)
             data = virtual_node_transform(data)
             
             processed_data.append(data)
