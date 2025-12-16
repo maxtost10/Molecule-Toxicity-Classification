@@ -1,3 +1,4 @@
 - Think about learnable representation
 - Fingerprint Augmentation
 - Verify that bond features were taken
+- Attention visualisation of left molecule is weird
