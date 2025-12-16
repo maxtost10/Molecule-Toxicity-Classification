@@ -35,8 +35,7 @@ liver_toxicity_project/
     │
     ├── training/                  # Training loops and model-specific logic
     │   ├── __init__.py
-    │   ├── lgbm_trainer.py        # 'train_lgbm_with_class_weights'
-    │   └── gat_trainer.py         # 'train_gat_model', 'calculate_class_weights'
+    │   └── lgbm_trainer.py        # 'train_lgbm_with_class_weights'
     │
     └── analysis/                  # Evaluation, Visualization, and Reporting
         ├── __init__.py
